@@ -4,27 +4,35 @@ import java.nio.file.*
 class FileWatcher(private val watchPath: String, private val vault: Vault) {
 
     private val watchDir = File(watchPath)
+    var onEvent: ((String) -> Unit)? = null
 
     fun start() {
         if (!watchDir.exists()) {
-            println("La carpeta no existe: $watchPath")
+            onEvent?.invoke("La carpeta no existe: $watchPath")
             return
         }
 
-        println("Vigilando carpeta: ${watchDir.absolutePath}")
-        println("Presiona Ctrl+C para detener...")
-
         val watchService = FileSystems.getDefault().newWatchService()
-        watchDir.toPath().register(watchService, StandardWatchEventKinds.ENTRY_DELETE)
+        watchDir.toPath().register(
+            watchService,
+            StandardWatchEventKinds.ENTRY_DELETE,
+            StandardWatchEventKinds.ENTRY_CREATE,
+            StandardWatchEventKinds.ENTRY_MODIFY
+        )
+
+        onEvent?.invoke("Vigilando: ${watchDir.absolutePath}")
 
         while (true) {
             val key = watchService.take()
             for (event in key.pollEvents()) {
                 val fileName = event.context().toString()
-                val deletedFile = File(watchPath, fileName)
-                println("Archivo eliminado detectado: $fileName")
-                // El archivo ya fue borrado, pero si tenemos backup previo lo mostramos
-                println("Revisa el vault para recuperarlo con la opcion 3 del menu")
+                val tipo = when (event.kind()) {
+                    StandardWatchEventKinds.ENTRY_DELETE -> "🗑️ Eliminado"
+                    StandardWatchEventKinds.ENTRY_CREATE -> "✅ Creado"
+                    StandardWatchEventKinds.ENTRY_MODIFY -> "✏️ Modificado"
+                    else -> "Evento"
+                }
+                onEvent?.invoke("$tipo: $fileName")
             }
             key.reset()
         }
@@ -39,6 +47,6 @@ class FileWatcher(private val watchPath: String, private val vault: Vault) {
                 count++
             }
         }
-        println("$count archivos respaldados.")
+        onEvent?.invoke("$count archivos respaldados.")
     }
 }
